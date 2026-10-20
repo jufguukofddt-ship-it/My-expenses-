@@ -1,0 +1,157 @@
+
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Expenses</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#f1f5f9;margin:0;padding:15px;color:#172033}
+h1{text-align:center;color:#166534}
+.card{background:white;padding:15px;border-radius:12px;margin:12px 0;box-shadow:0 2px 8px #0001}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:#dcfce7;padding:12px;border-radius:10px;text-align:center}
+input,select,button{width:100%;padding:12px;margin:6px 0;border-radius:8px;border:1px solid #cbd5e1;font-size:16px}
+button{background:#15803d;color:white;border:0;font-weight:bold}
+.del{background:#dc2626;width:auto;padding:8px}
+.edit{background:#2563eb;width:auto;padding:8px}
+.item{border-bottom:1px solid #ddd;padding:10px 0;overflow-wrap:anywhere}
+small{color:#64748b}
+</style>
+</head>
+<body>
+<h1>My Expenses</h1>
+
+<div class="card">
+<h3>📊 Mera Hisab</h3>
+<div class="grid">
+<div class="stat">Kamai<br><b id="income">₹0</b></div>
+<div class="stat">Kharch<br><b id="expense">₹0</b></div>
+<div class="stat">Lene hain<br><b id="receive">₹0</b></div>
+<div class="stat">Dene hain<br><b id="pay">₹0</b></div>
+<div class="stat">Meri bachat<br><b id="mine">₹0</b></div>
+<div class="stat">Bhai ki bachat<br><b id="bro">₹0</b></div>
+</div>
+<h3>Haath mein bache paise: <span id="balance">₹0</span></h3>
+</div>
+
+<div class="card">
+<h3>➕ Naya Hisab Jodein</h3>
+<form id="entryForm">
+<label>Hisab ka prakar</label>
+<select id="type" required>
+<option value="income">Kamai</option>
+<option value="expense">Kharch</option>
+<option value="receive">Mujhe lene hain</option>
+<option value="pay">Mujhe dene hain</option>
+<option value="mine">Meri bachat (jama)</option>
+<option value="bro">Bhai ki bachat (jama)</option>
+<option value="mineout">Meri bachat (nikasi)</option>
+<option value="broout">Bhai ki bachat (nikasi)</option>
+</select>
+<input id="name" placeholder="Vyakti / kaam ka naam">
+<input id="amount" type="number" min="0.01" step="0.01" placeholder="Rakam ₹" required>
+<input id="date" type="date" required>
+<input id="note" placeholder="Kuch likhna ho (optional)">
+<button type="submit" id="saveBtn">Hisab Save Karein</button>
+<button type="button" id="cancelBtn" style="display:none;background:#64748b">Edit Cancel</button>
+</form>
+</div>
+
+<div class="card">
+<h3>🔎 Purana Hisab</h3>
+<input id="search" placeholder="Naam ya hisab khojein">
+<button id="backup">Backup Download Karein</button>
+<label>Backup Restore Karein</label>
+<input id="restoreFile" type="file" accept=".json,application/json">
+<div id="history"></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const KEY='myExpensesDataV1';
+let entries=[];
+let editingId=null;
+
+try{entries=JSON.parse(localStorage.getItem(KEY)||'[]');if(!Array.isArray(entries))entries=[]}catch(e){entries=[]}
+$('date').value=new Date().toLocaleDateString('en-CA');
+
+function saveData(){localStorage.setItem(KEY,JSON.stringify(entries));render()}
+function money(n){return '₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2})}
+
+function render(){
+ const totals={income:0,expense:0,receive:0,pay:0,mine:0,bro:0};
+ entries.forEach(e=>{
+  if(e.type==='mineout')totals.mine-=e.amount;
+  else if(e.type==='broout')totals.bro-=e.amount;
+  else if(totals[e.type]!==undefined)totals[e.type]+=e.amount;
+ });
+ Object.keys(totals).forEach(k=>$(k).textContent=money(totals[k]));
+ $('balance').textContent=money(totals.income-totals.expense);
+ const q=$('search').value.trim().toLowerCase();
+ const filtered=entries.filter(e=>(e.name+' '+e.note+' '+e.type+' '+e.date).toLowerCase().includes(q)).slice().reverse();
+ $('history').innerHTML='';
+ if(!filtered.length){$('history').textContent='Abhi koi hisab nahi mila.';return}
+ filtered.forEach(e=>{
+  const div=document.createElement('div');div.className='item';
+  const title=document.createElement('b');
+  const names={income:'Kamai',expense:'Kharch',receive:'Mujhe lene hain',pay:'Mujhe dene hain',mine:'Meri bachat jama',bro:'Bhai ki bachat jama',mineout:'Meri bachat nikasi',broout:'Bhai ki bachat nikasi'};
+  title.textContent=(names[e.type]||e.type)+' — '+money(e.amount);
+  const detail=document.createElement('div');
+  detail.textContent=(e.name||'Naam nahi diya')+' | '+e.date+(e.note?' | '+e.note:'');
+  const edit=document.createElement('button');edit.className='edit';edit.textContent='Edit';
+  edit.onclick=()=>editEntry(e.id);
+  const del=document.createElement('button');del.className='del';del.textContent='Delete';
+  del.onclick=()=>{if(confirm('Kya ye hisab delete karna hai?')){entries=entries.filter(x=>x.id!==e.id);if(editingId===e.id)resetForm();saveData()}};
+  div.append(title,detail,edit,del);$('history').append(div);
+ });
+}
+
+function resetForm(){
+ editingId=null;$('entryForm').reset();
+ $('date').value=new Date().toLocaleDateString('en-CA');
+ $('saveBtn').textContent='Hisab Save Karein';$('cancelBtn').style.display='none';
+}
+function editEntry(id){
+ const e=entries.find(x=>x.id===id);if(!e)return;
+ editingId=id;$('type').value=e.type;$('name').value=e.name;
+ $('amount').value=e.amount;$('date').value=e.date;$('note').value=e.note;
+ $('saveBtn').textContent='Badlav Save Karein';$('cancelBtn').style.display='block';
+ window.scrollTo({top:0,behavior:'smooth'});
+}
+$('entryForm').addEventListener('submit',e=>{
+ e.preventDefault();
+ const amount=Number($('amount').value);
+ if(!Number.isFinite(amount)||amount<=0){alert('Sahi rakam likhein');return}
+ const item={id:editingId||Date.now().toString(),type:$('type').value,name:$('name').value.trim(),amount,date:$('date').value,note:$('note').value.trim()};
+ if(editingId){entries=entries.map(x=>x.id===editingId?item:x)}
+ else entries.push(item);
+ saveData();resetForm();
+});
+$('cancelBtn').onclick=resetForm;
+$('search').addEventListener('input',render);
+
+$('backup').onclick=()=>{
+ const blob=new Blob([JSON.stringify(entries,null,2)],{type:'application/json'});
+ const url=URL.createObjectURL(blob);const a=document.createElement('a');
+ a.href=url;a.download='my-expenses-backup.json';a.click();
+ URL.revokeObjectURL(url);
+};
+$('restoreFile').addEventListener('change',async e=>{
+ const file=e.target.files[0];if(!file)return;
+ try{
+  const data=JSON.parse(await file.text());
+  if(!Array.isArray(data)||!data.every(x=>x&&typeof x.amount==='number'&&typeof x.type==='string'&&x.date)){
+   throw new Error('Invalid backup');
+  }
+  if(confirm('Restore karne se maujooda hisab replace ho jayega. Aage badhein?')){
+   entries=data;saveData();resetForm();alert('Backup restore ho gaya');
+  }
+ }catch(err){alert('Backup file sahi nahi hai')}
+ e.target.value='';
+});
+render();
+</script>
+</body>
+</html>
