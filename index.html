@@ -17,6 +17,10 @@ button{background:#15803d;color:white;border:0;font-weight:bold}
 .edit{background:#2563eb;width:auto}
 .del{background:#dc2626;width:auto}
 .item{border-bottom:1px solid #ddd;padding:12px 0;overflow-wrap:anywhere}
+.viewbuttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.viewbuttons button{margin:6px 0}
+.viewbuttons .active{background:#166534;outline:2px solid #86efac}
+.count{background:#f0fdf4;padding:10px;border-radius:8px;margin:8px 0}
 </style>
 </head>
 <body>
@@ -78,12 +82,23 @@ button{background:#15803d;color:white;border:0;font-weight:bold}
 </div>
 
 <div class="card">
-<h3>🔎 Purana Hisab</h3>
-<input id="search" placeholder="Naam ya category khojein">
+<h3>📚 Purana Hisab — Puri List</h3>
+
+<input id="search" placeholder="Naam, category ya jaankari khojein">
+
+<div class="viewbuttons">
+<button type="button" id="allBtn" class="active">📋 Saare Hisab</button>
+<button type="button" id="recentBtn">🕒 Aakhiri 10</button>
+</div>
+
+<div class="count" id="count">Kul hisab: 0</div>
+<div id="history"></div>
+
+<hr>
+<h3>💾 Data Suraksha</h3>
 <button type="button" id="backup">Backup Download Karein</button>
 <label>Backup Restore Karein</label>
 <input id="restoreFile" type="file" accept=".json,application/json">
-<div id="history"></div>
 </div>
 
 <script>
@@ -91,6 +106,7 @@ const $=id=>document.getElementById(id);
 const KEY='myExpensesDataV1';
 let entries=[];
 let editingId=null;
+let viewMode='all';
 
 try {
  entries=JSON.parse(localStorage.getItem(KEY)||'[]');
@@ -108,38 +124,63 @@ function saveData(){
  render();
 }
 
+const names={
+ income:'Kamai',
+ expense:'Kharch',
+ receive:'Mujhe lene hain',
+ pay:'Mujhe dene hain',
+ mine:'Meri bachat jama',
+ bro:'Bhai ki bachat jama',
+ mineout:'Meri bachat nikasi',
+ broout:'Bhai ki bachat nikasi'
+};
+
 function render(){
  const totals={income:0,expense:0,receive:0,pay:0,mine:0,bro:0};
 
  entries.forEach(e=>{
-  if(e.type==='mineout') totals.mine-=e.amount;
-  else if(e.type==='broout') totals.bro-=e.amount;
-  else if(totals[e.type]!==undefined) totals[e.type]+=e.amount;
+  const amount=Number(e.amount)||0;
+  if(e.type==='mineout') totals.mine-=amount;
+  else if(e.type==='broout') totals.bro-=amount;
+  else if(totals[e.type]!==undefined) totals[e.type]+=amount;
  });
 
- Object.keys(totals).forEach(k=>$(k).textContent=money(totals[k]));
+ Object.keys(totals).forEach(k=>{
+  $(k).textContent=money(totals[k]);
+ });
  $('balance').textContent=money(totals.income-totals.expense);
 
  const q=$('search').value.trim().toLowerCase();
- const filtered=entries.filter(e=>
-  [e.name,e.note,e.type,e.date,e.category].join(' ').toLowerCase().includes(q)
- ).slice().reverse();
+
+ const matching=entries.filter(e=>
+  [e.name,e.note,e.type,e.date,e.category]
+   .join(' ').toLowerCase().includes(q)
+ );
+
+ // Naye hisab pehle dikhaye jayenge.
+ matching.sort((a,b)=>
+  String(b.date||'').localeCompare(String(a.date||'')) ||
+  String(b.id||'').localeCompare(String(a.id||''))
+ );
+
+ const shown=viewMode==='recent'?matching.slice(0,10):matching;
+
+ $('count').textContent=
+  'Kul hisab: '+entries.length+
+  ' | Search se mile: '+matching.length+
+  ' | Screen par: '+shown.length;
+
+ $('allBtn').classList.toggle('active',viewMode==='all');
+ $('recentBtn').classList.toggle('active',viewMode==='recent');
 
  $('history').innerHTML='';
 
- if(!filtered.length){
+ if(!shown.length){
   $('history').textContent='Abhi koi hisab nahi mila.';
   return;
  }
 
- const names={
-  income:'Kamai',expense:'Kharch',receive:'Mujhe lene hain',
-  pay:'Mujhe dene hain',mine:'Meri bachat jama',
-  bro:'Bhai ki bachat jama',mineout:'Meri bachat nikasi',
-  broout:'Bhai ki bachat nikasi'
- };
-
- filtered.forEach(e=>{
+ shown.forEach(e=>{
   const div=document.createElement('div');
   div.className='item';
 
@@ -148,7 +189,8 @@ function render(){
 
   const detail=document.createElement('div');
   detail.textContent='Category: '+(e.category||'General')+
-   ' | '+(e.name||'Naam nahi diya')+' | '+e.date+
+   ' | '+(e.name||'Naam nahi diya')+
+   ' | Tarikh: '+(e.date||'')+
    (e.note?' | '+e.note:'');
 
   const edit=document.createElement('button');
@@ -181,10 +223,10 @@ function resetForm(){
 }
 
 function editEntry(id){
- const e=entries.find(x=>x.id===id);
+ const e=entries.find(x=>String(x.id)===String(id));
  if(!e)return;
 
- editingId=id;
+ editingId=e.id;
  $('type').value=e.type;
  $('category').value=e.category||'General';
  $('name').value=e.name||'';
@@ -215,8 +257,10 @@ $('entryForm').addEventListener('submit',e=>{
   note:$('note').value.trim()
  };
 
- if(editingId){
-  entries=entries.map(x=>x.id===editingId?item:x);
+ if(editingId!==null){
+  entries=entries.map(x=>
+   String(x.id)===String(editingId)?item:x
+  );
  } else {
   entries.push(item);
  }
@@ -226,16 +270,32 @@ $('entryForm').addEventListener('submit',e=>{
 });
 
 $('cancelBtn').onclick=resetForm;
+
 $('search').addEventListener('input',render);
 
+$('allBtn').onclick=()=>{
+ viewMode='all';
+ render();
+};
+
+$('recentBtn').onclick=()=>{
+ viewMode='recent';
+ render();
+};
+
 $('backup').onclick=()=>{
- const blob=new Blob([JSON.stringify(entries,null,2)],{type:'application/json'});
+ const blob=new Blob(
+  [JSON.stringify(entries,null,2)],
+  {type:'application/json'}
+ );
  const url=URL.createObjectURL(blob);
  const a=document.createElement('a');
  a.href=url;
  a.download='my-expenses-backup.json';
+ document.body.appendChild(a);
  a.click();
- URL.revokeObjectURL(url);
+ a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 
 $('restoreFile').addEventListener('change',async e=>{
@@ -246,7 +306,8 @@ $('restoreFile').addEventListener('change',async e=>{
   const data=JSON.parse(await file.text());
 
   if(!Array.isArray(data)||!data.every(x=>
-   x&&typeof x.amount==='number'&&typeof x.type==='string'&&x.date
+   x&&typeof x.amount==='number'&&
+   typeof x.type==='string'&&x.date
   )) throw new Error('Invalid backup');
 
   if(confirm('Maujooda hisab replace hoga. Pehle backup bana liya hai?')){
